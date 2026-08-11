@@ -82,33 +82,18 @@ Apabila koneksi diarahkan ke server palsu dengan sertifikat yang tidak dipercaya
 - `PubSubClient.h`
 - `TinyGPS++.h`
 
-### Security Testing
-
+### Python Security Testing
 - Python 3
 - Paho MQTT
-- `ssl`
-- `dnslib`
+- dnslib
+
+### Network Analysis
 - Wireshark
-
-## Repository Structure
-
-```text
-secure-campus-transport-iot/
-│
-├── esp32.ino
-├── ujikeamanan.ino
-├── uji_tls13.py
-├── dns_spoofer.py
-├── rogue_server.py
-├── interface/
-└── README.md
-```
 
 ## Telemetry Data
 
 ESP32 menerima informasi dari GPS dan mengambil parameter yang digunakan dalam sistem, seperti:
 
-- License plate
 - Latitude
 - Longitude
 - Speed
