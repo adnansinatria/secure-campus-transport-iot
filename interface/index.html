@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kinetic Transit — Visualisasi Keamanan Telemetri IoT</title>
+  <meta name="description" content="Interface visualisasi keamanan telemetri data IoT menggunakan ESP32, MQTT over TLS 1.2, dengan simulasi serangan Man-in-the-Middle (MITM).">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ===== HEADER ===== -->
+  <header class="app-header">
+    <div class="logo">
+      <div class="logo-icon">🛡️</div>
+      <span class="logo-text">Kinetic Transit</span>
+      <span class="logo-badge">Telemetri</span>
+    </div>
+    <nav class="tab-nav">
+      <button class="tab-btn active" data-tab="telemetri">
+        <span class="tab-icon">📡</span>Proses Telemetri
+      </button>
+      <button class="tab-btn" data-tab="enkripsi">
+        <span class="tab-icon">🔐</span>Plaintext → Ciphertext
+      </button>
+      <button class="tab-btn" data-tab="mitm">
+        <span class="tab-icon">⚠️</span>Simulasi MITM
+      </button>
+    </nav>
+  </header>
+
+  <!-- ===== MAIN CONTENT ===== -->
+  <main class="main-content">
+
+    <!-- ============================================================
+         TAB 1: PROSES TELEMETRI DATA
+         ============================================================ -->
+    <section id="tab-telemetri" class="tab-panel active">
+      <div class="section-header">
+        <h1 class="section-title">Proses <span class="highlight">Telemetri Data</span></h1>
+        <p class="section-subtitle">
+          Visualisasi alur pengiriman data GPS dari ESP32 (NEO-6M) melalui protokol MQTT yang diamankan dengan TLS 1.2 menuju HiveMQ Cloud Broker.
+        </p>
+      </div>
+
+      <!-- Flow Diagram -->
+      <div class="glass-card no-hover">
+        <div class="card-title"><span class="dot dot-cyan"></span>ARSITEKTUR ALUR DATA</div>
+        <div class="flow-diagram" id="flow-diagram">
+          <!-- Node: ESP32 -->
+          <div class="flow-node">
+            <div class="node-icon node-device" id="node-esp32">📟</div>
+            <div class="node-label">ESP32 + GPS</div>
+            <div class="node-sub">NEO-6M Module</div>
+          </div>
+          <!-- Arrow 1 -->
+          <div class="flow-arrow" id="arrow-1">
+            <div class="arrow-line"></div>
+            <div class="arrow-head"></div>
+            <div class="arrow-packet"></div>
+          </div>
+          <!-- Node: WiFi -->
+          <div class="flow-node">
+            <div class="node-icon node-wifi" id="node-wifi">📶</div>
+            <div class="node-label">WiFi (WPA2)</div>
+            <div class="node-sub">SSID: "test"</div>
+          </div>
+          <!-- Arrow 2 -->
+          <div class="flow-arrow" id="arrow-2">
+            <div class="arrow-line"></div>
+            <div class="arrow-head"></div>
+            <div class="arrow-packet"></div>
+          </div>
+          <!-- Node: TLS -->
+          <div class="flow-node">
+            <div class="node-icon node-secure" id="node-tls">🔒</div>
+            <div class="node-label">TLS 1.2 Tunnel</div>
+            <div class="node-sub">Port 8883</div>
+          </div>
+          <!-- Arrow 3 -->
+          <div class="flow-arrow" id="arrow-3">
+            <div class="arrow-line"></div>
+            <div class="arrow-head"></div>
+            <div class="arrow-packet"></div>
+          </div>
+          <!-- Node: HiveMQ -->
+          <div class="flow-node">
+            <div class="node-icon node-cloud" id="node-broker">☁️</div>
+            <div class="node-label">HiveMQ Cloud</div>
+            <div class="node-sub">maroonhoney-*.hivemq.cloud</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Status Cards -->
+      <div class="status-row" id="status-row">
+        <div class="glass-card status-card">
+          <div class="status-indicator status-wait" id="status-wifi-icon">📶</div>
+          <div class="status-info">
+            <div class="status-label">Wi-Fi</div>
+            <div class="status-value" id="status-wifi">Menunggu...</div>
+          </div>
+        </div>
+        <div class="glass-card status-card">
+          <div class="status-indicator status-wait" id="status-ntp-icon">🕐</div>
+          <div class="status-info">
+            <div class="status-label">NTP Sync</div>
+            <div class="status-value" id="status-ntp">Menunggu...</div>
+          </div>
+        </div>
+        <div class="glass-card status-card">
+          <div class="status-indicator status-wait" id="status-mqtt-icon">🔌</div>
+          <div class="status-info">
+            <div class="status-label">MQTT (TLS)</div>
+            <div class="status-value" id="status-mqtt">Menunggu...</div>
+          </div>
+        </div>
+        <div class="glass-card status-card">
+          <div class="status-indicator status-wait" id="status-gps-icon">🛰️</div>
+          <div class="status-info">
+            <div class="status-label">GPS Fix</div>
+            <div class="status-value" id="status-gps">Menunggu...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div class="btn-group mt-lg" style="justify-content: center;">
+        <button class="btn btn-primary" id="btn-start-telemetri">
+          ▶ Mulai Simulasi Telemetri
+        </button>
+        <button class="btn btn-outline" id="btn-reset-telemetri" disabled>
+          ↺ Reset
+        </button>
+      </div>
+
+      <!-- Live Data & Metrics -->
+      <div class="data-grid" id="telemetri-data" style="display: none;">
+        <!-- JSON Payload -->
+        <div class="glass-card">
+          <div class="card-title"><span class="dot dot-green"></span>PAYLOAD JSON (LIVE)</div>
+          <div class="json-display" id="json-payload">
+            <span class="t-dim">Menunggu data GPS...</span>
+          </div>
+          <!-- Terminal log -->
+          <div class="terminal mt-md">
+            <div class="terminal-bar">
+              <div class="terminal-dot red"></div>
+              <div class="terminal-dot yellow"></div>
+              <div class="terminal-dot green"></div>
+              <span class="terminal-title">Serial Monitor — ESP32</span>
+            </div>
+            <div class="terminal-body" id="serial-log"></div>
+          </div>
+        </div>
+
+        <!-- Metrics -->
+        <div class="flex flex-col gap-md">
+          <div class="glass-card">
+            <div class="card-title"><span class="dot dot-amber"></span>METRIK PERFORMA</div>
+            <div class="metrics-grid">
+              <div class="metric-card glass-card">
+                <div class="metric-value cyan" id="metric-handshake">—</div>
+                <div class="metric-label">Handshake TLS (ms)</div>
+              </div>
+              <div class="metric-card glass-card">
+                <div class="metric-value green" id="metric-publish">—</div>
+                <div class="metric-label">Publish Delay (ms)</div>
+              </div>
+              <div class="metric-card glass-card">
+                <div class="metric-value amber" id="metric-packets">0</div>
+                <div class="metric-label">Paket Terkirim</div>
+              </div>
+              <div class="metric-card glass-card">
+                <div class="metric-value purple" id="metric-uptime">0s</div>
+                <div class="metric-label">Uptime</div>
+              </div>
+            </div>
+          </div>
+          <!-- TLS Info -->
+          <div class="glass-card">
+            <div class="card-title"><span class="dot dot-green"></span>DETAIL KONEKSI TLS</div>
+            <div class="tls-info-grid">
+              <div class="tls-info-item">
+                <div class="tls-info-icon">🔐</div>
+                <div>
+                  <div class="tls-info-label">Protokol</div>
+                  <div class="tls-info-value">TLS 1.2</div>
+                </div>
+              </div>
+              <div class="tls-info-item">
+                <div class="tls-info-icon">🔑</div>
+                <div>
+                  <div class="tls-info-label">Cipher Suite</div>
+                  <div class="tls-info-value">TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384</div>
+                </div>
+              </div>
+              <div class="tls-info-item">
+                <div class="tls-info-icon">📜</div>
+                <div>
+                  <div class="tls-info-label">Sertifikat CA</div>
+                  <div class="tls-info-value">ISRG Root X1</div>
+                </div>
+              </div>
+              <div class="tls-info-item">
+                <div class="tls-info-icon">🌐</div>
+                <div>
+                  <div class="tls-info-label">Broker</div>
+                  <div class="tls-info-value">HiveMQ Cloud</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         TAB 2: PLAINTEXT → CIPHERTEXT
+         ============================================================ -->
+    <section id="tab-enkripsi" class="tab-panel">
+      <div class="section-header">
+        <h1 class="section-title">Transformasi <span class="highlight">Plaintext → Ciphertext</span></h1>
+        <p class="section-subtitle">
+          Demonstrasi bagaimana data telemetri GPS dienkripsi oleh TLS 1.2 menggunakan algoritma AES-256-GCM sebelum dikirim melalui jaringan, sehingga tidak bisa dibaca oleh pihak ketiga.
+        </p>
+      </div>
+
+      <!-- Encryption Layout -->
+      <div class="encrypt-layout">
+        <!-- Left: Plaintext -->
+        <div class="glass-card encrypt-panel">
+          <div class="card-title"><span class="dot dot-green"></span>PLAINTEXT (DATA ASLI)</div>
+          <textarea class="encrypt-textarea" id="plaintext-input">{
+  "license_plate": "D 1234 AB",
+  "latitude": -6.927233,
+  "longitude": 107.773827,
+  "speed": 15.20
+}</textarea>
+          <p class="text-muted mt-sm" style="font-size: 11px;">
+            ↑ Data JSON dari sensor GPS ESP32 (bisa diedit)
+          </p>
+        </div>
+
+        <!-- Center: Process Steps -->
+        <div class="encrypt-process">
+          <div class="process-step" id="enc-step-1">
+            <div class="step-num">1</div>
+            <span>Client Hello</span>
+          </div>
+          <div class="process-arrow">↓</div>
+          <div class="process-step" id="enc-step-2">
+            <div class="step-num">2</div>
+            <span>Server Hello</span>
+          </div>
+          <div class="process-arrow">↓</div>
+          <div class="process-step" id="enc-step-3">
+            <div class="step-num">3</div>
+            <span>Key Exchange (ECDHE)</span>
+          </div>
+          <div class="process-arrow">↓</div>
+          <div class="process-step" id="enc-step-4">
+            <div class="step-num">4</div>
+            <span>Sertifikat Verifikasi</span>
+          </div>
+          <div class="process-arrow">↓</div>
+          <div class="process-step" id="enc-step-5">
+            <div class="step-num">5</div>
+            <span>AES-256-GCM Encrypt</span>
+          </div>
+          <div class="process-arrow">↓</div>
+          <div class="process-step" id="enc-step-6">
+            <div class="step-num">6</div>
+            <span>Application Data ✓</span>
+          </div>
+
+          <div class="btn-group mt-md" style="flex-direction: column; width: 100%; gap: 8px;">
+            <button class="btn btn-primary" id="btn-encrypt" style="width: 100%;">
+              🔐 Kirim via TLS 1.2 (Port 8883)
+            </button>
+            <button class="btn btn-danger" id="btn-send-plaintext" style="width: 100%;">
+              ⚠️ Kirim Tanpa TLS (Port 1883)
+            </button>
+          </div>
+          <button class="btn btn-outline btn-sm mt-sm" id="btn-reset-encrypt" style="display:none; width: 100%;">
+            ↺ Reset
+          </button>
+        </div>
+
+        <!-- Right: Ciphertext -->
+        <div class="glass-card encrypt-panel">
+          <div class="card-title"><span class="dot dot-red"></span>CIPHERTEXT (DATA TERENKRIPSI)</div>
+          <div class="hex-output" id="ciphertext-output">
+            <span class="t-dim">Tekan tombol "Enkripsi Data" untuk memulai proses enkripsi TLS 1.2...</span>
+          </div>
+          <p class="text-muted mt-sm" style="font-size: 11px;">
+            ↑ Data setelah dienkripsi — tidak bisa dibaca tanpa kunci
+          </p>
+        </div>
+      </div>
+
+      <!-- TLS 1.2 Handshake Detail -->
+      <div class="glass-card tls-detail mt-xl">
+        <div class="card-title"><span class="dot dot-cyan"></span>PERBANDINGAN: SEBELUM vs SESUDAH ENKRIPSI</div>
+        <div class="comparison-grid">
+          <div class="glass-card compare-card compare-insecure">
+            <span class="compare-badge">❌ Tanpa TLS</span>
+            <h3 style="font-size: 15px; margin-bottom: 12px; color: var(--accent-red);">Data Tanpa Enkripsi</h3>
+            <div class="json-display" style="font-size: 12px; min-height: auto;">
+<span class="json-brace">{</span>
+  <span class="json-key">"license_plate"</span>: <span class="json-string">"D 1234 AB"</span>,
+  <span class="json-key">"latitude"</span>: <span class="json-number">-6.927233</span>,
+  <span class="json-key">"longitude"</span>: <span class="json-number">107.773827</span>,
+  <span class="json-key">"speed"</span>: <span class="json-number">15.20</span>
+<span class="json-brace">}</span>
+            </div>
+            <p class="text-red mt-sm" style="font-size: 12px;">⚠ Siapapun yang menyadap jaringan dapat membaca data lokasi kendaraan secara langsung.</p>
+          </div>
+          <div class="glass-card compare-card compare-secure">
+            <span class="compare-badge">✅ Dengan TLS 1.2</span>
+            <h3 style="font-size: 15px; margin-bottom: 12px; color: var(--accent-green);">Data Terenkripsi</h3>
+            <div class="hex-output" style="font-size: 11px; min-height: auto; color: var(--text-muted);">
+17 03 03 00 45 a2 b5 c8<br>
+d1 e4 f7 0a 1b 2c 3d 4e<br>
+5f 60 71 82 93 a4 b5 c6<br>
+d7 e8 f9 0a ab bc cd de<br>
+ef 01 12 23 34 45 56 67<br>
+78 89 9a ...
+            </div>
+            <p class="text-green mt-sm" style="font-size: 12px;">✓ Data hanya bisa dibaca oleh penerima yang memiliki kunci dekripsi (HiveMQ Broker).</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         TAB 3: SIMULASI MITM
+         ============================================================ -->
+    <section id="tab-mitm" class="tab-panel">
+      <div class="section-header">
+        <h1 class="section-title">Simulasi Serangan <span class="highlight-red">Man-in-the-Middle</span></h1>
+        <p class="section-subtitle">
+          Demonstrasi bagaimana penyerang mencoba menyadap data telemetri menggunakan DNS Spoofing dan Rogue TLS Server, serta bagaimana TLS 1.2 dengan validasi sertifikat berhasil menggagalkan serangan tersebut (Fail-Secure).
+        </p>
+      </div>
+
+      <!-- MITM Network Diagram -->
+      <div class="glass-card no-hover">
+        <div class="card-title"><span class="dot dot-red"></span>TOPOLOGI SERANGAN MITM</div>
+        <div class="mitm-diagram" id="mitm-diagram">
+          <!-- Node: ESP32 (Korban) -->
+          <div class="mitm-node">
+            <div class="mitm-node-icon node-iot" id="mitm-esp32">📟</div>
+            <div class="mitm-node-label">ESP32 (Korban)</div>
+            <div class="mitm-node-sub">Node IoT</div>
+          </div>
+
+          <!-- Arrow: ESP32 → Attacker -->
+          <div class="mitm-arrow arrow-danger" id="mitm-arrow-1">
+            <div class="arrow-line"></div>
+            <div class="arrow-label">DNS Poisoned</div>
+            <div class="attack-packet"></div>
+          </div>
+
+          <!-- Node: Attacker -->
+          <div class="mitm-node">
+            <div class="mitm-node-icon node-attacker" id="mitm-attacker">💀</div>
+            <div class="mitm-node-label text-red">Attacker</div>
+            <div class="mitm-node-sub">10.211.119.98</div>
+          </div>
+
+          <!-- Arrow: Attacker → Broker (Blocked) -->
+          <div class="mitm-arrow arrow-blocked" id="mitm-arrow-2" style="position: relative;">
+            <div class="arrow-line"></div>
+            <div class="arrow-label" style="color: var(--text-muted); background: rgba(255,255,255,0.05);">Blocked ✕</div>
+            <div class="mitm-blocked-x" id="mitm-blocked-x">✕</div>
+          </div>
+
+          <!-- Node: HiveMQ (Real) -->
+          <div class="mitm-node">
+            <div class="mitm-node-icon node-broker" id="mitm-broker">☁️</div>
+            <div class="mitm-node-label text-green">HiveMQ (Real)</div>
+            <div class="mitm-node-sub">Broker Asli</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MITM Steps -->
+      <div class="mitm-steps" id="mitm-steps">
+        <div class="glass-card mitm-step" id="mitm-step-1">
+          <div class="mitm-step-num">Langkah 1</div>
+          <div class="mitm-step-title">🔍 DNS Query</div>
+          <div class="mitm-step-desc">ESP32 mengirim DNS request untuk domain <code style="color: var(--accent-cyan);">maroonhoney-*.hivemq.cloud</code>. Attacker mencegat dan mengirimkan IP palsu.</div>
+        </div>
+        <div class="glass-card mitm-step" id="mitm-step-2">
+          <div class="mitm-step-num">Langkah 2</div>
+          <div class="mitm-step-title">🔌 TCP Connect</div>
+          <div class="mitm-step-desc">ESP32 tersambung ke IP palsu (Rogue Server) di port <code style="color: var(--accent-amber);">8883</code>, mengira itu adalah broker asli.</div>
+        </div>
+        <div class="glass-card mitm-step" id="mitm-step-3">
+          <div class="mitm-step-num">Langkah 3</div>
+          <div class="mitm-step-title">📜 Sertifikat Palsu</div>
+          <div class="mitm-step-desc">Rogue Server mengirim sertifikat dengan <code style="color: var(--accent-red);">CN=Fake-HiveMQ</code>. ESP32 memvalidasi terhadap CA root yang dipercaya.</div>
+        </div>
+        <div class="glass-card mitm-step" id="mitm-step-4">
+          <div class="mitm-step-num">Langkah 4</div>
+          <div class="mitm-step-title">🛡️ FAIL-SECURE</div>
+          <div class="mitm-step-desc">ESP32 <strong>menolak</strong> sertifikat palsu! Koneksi TCP di-reset (RST). Data telemetri <strong>tidak pernah terkirim</strong> ke attacker.</div>
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div class="btn-group mt-lg" style="justify-content: center;">
+        <button class="btn btn-danger" id="btn-start-mitm">
+          💀 Mulai Simulasi Serangan
+        </button>
+        <button class="btn btn-outline" id="btn-reset-mitm" disabled>
+          ↺ Reset
+        </button>
+      </div>
+
+      <!-- Terminal Output -->
+      <div class="data-grid mt-lg">
+        <!-- DNS Spoofer Terminal -->
+        <div class="terminal" id="terminal-dns">
+          <div class="terminal-bar">
+            <div class="terminal-dot red"></div>
+            <div class="terminal-dot yellow"></div>
+            <div class="terminal-dot green"></div>
+            <span class="terminal-title">dns_spoofer.py — Attacker Machine</span>
+          </div>
+          <div class="terminal-body" id="dns-log"></div>
+        </div>
+
+        <!-- Rogue Server Terminal -->
+        <div class="terminal" id="terminal-rogue">
+          <div class="terminal-bar">
+            <div class="terminal-dot red"></div>
+            <div class="terminal-dot yellow"></div>
+            <div class="terminal-dot green"></div>
+            <span class="terminal-title">rogue_server.py — Attacker Machine</span>
+          </div>
+          <div class="terminal-body" id="rogue-log"></div>
+        </div>
+      </div>
+
+      <!-- Result Banner -->
+      <div class="result-banner result-secure" id="result-secure">
+        <div class="result-icon">🛡️</div>
+        <div>
+          <div class="result-title text-green">SISTEM AMAN — Serangan MITM Digagalkan!</div>
+          <div class="result-desc">
+            TLS 1.2 dengan validasi sertifikat CA berhasil mendeteksi sertifikat palsu dari Rogue Server.
+            ESP32 secara otomatis menolak koneksi (Fail-Secure). Data telemetri GPS tetap terlindungi dan tidak bocor ke penyerang.
+          </div>
+        </div>
+      </div>
+
+      <!-- Comparison: With TLS vs Without TLS -->
+      <div class="comparison-grid mt-xl">
+        <div class="glass-card compare-card compare-secure">
+          <span class="compare-badge">✅ DENGAN TLS 1.2</span>
+          <h3 style="font-size: 15px; margin-bottom: 12px; color: var(--accent-green);">Hasil: FAIL-SECURE</h3>
+          <ul style="font-size: 13px; color: var(--text-secondary); line-height: 2; list-style: none; padding: 0;">
+            <li>✓ Sertifikat palsu terdeteksi dan ditolak</li>
+            <li>✓ Koneksi TCP langsung di-reset (RST)</li>
+            <li>✓ Data GPS tidak pernah terkirim ke attacker</li>
+            <li>✓ Confidentiality & integrity terjaga</li>
+          </ul>
+        </div>
+        <div class="glass-card compare-card compare-insecure">
+          <span class="compare-badge">❌ TANPA TLS</span>
+          <h3 style="font-size: 15px; margin-bottom: 12px; color: var(--accent-red);">Hasil: DATA BOCOR</h3>
+          <ul style="font-size: 13px; color: var(--text-secondary); line-height: 2; list-style: none; padding: 0;">
+            <li>✕ Tidak ada validasi sertifikat</li>
+            <li>✕ Data terkirim dalam bentuk plaintext</li>
+            <li>✕ Attacker membaca lokasi real-time kendaraan</li>
+            <li>✕ Posisi penumpang terekspos sepenuhnya</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
