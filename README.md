@@ -200,11 +200,3 @@ Jangan menyimpan atau mempublikasikan kredensial Wi-Fi, kredensial MQTT, private
 ## Research Context
 
 Repository ini mendukung penelitian mengenai keamanan komunikasi pada sistem pelacakan transportasi kampus berbasis IoT dengan menggunakan MQTT yang diamankan melalui TLS.
-
-## Author
-
-**Adnan Sinatria**
-
-Undergraduate Research Project
-
-Internet of Things · MQTT · TLS · ESP32 · Smart Campus Transportation
